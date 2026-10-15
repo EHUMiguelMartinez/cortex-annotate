@@ -225,6 +225,12 @@ annotations:
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
+  V2 HM:
+    fixed_head: V1 Foveal Point
+    fixed_tail: V2 Foveal Point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
   V2 UVM (ventral):
     fixed_head: V2 Foveal Point
     grid:
@@ -262,6 +268,12 @@ annotations:
   # V3 contours:
   V3 Foveal Point:
     type: point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V3 HM:
+    fixed_head: V2 Foveal Point
+    fixed_tail: V3 Foveal Point
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
@@ -428,21 +440,29 @@ review: |
   v1v_poly = np.vstack([v1uvm, v1vper, np.flipud(v1hm)])
   v1d_poly = np.vstack([v1hm, v1dper, np.flipud(v1lvm)])
 
-  # V2v / V2d (split at the natural foveal pinch point, no new line needed):
+  # V2v / V2d (closed along the V2 HM link V1-fovea -> V2-fovea):
   v2uvm = annotations['V2 UVM (ventral)']
   v2lvm = annotations['V2 LVM (dorsal)']
   v2pev = annotations['V2 Ventral Periphery']
   v2ped = annotations['V2 Dorsal Periphery']
-  v2v_poly = np.vstack([v2uvm, v2pev, np.flipud(v1uvm)])
-  v2d_poly = np.vstack([v1lvm, np.flipud(v2ped), np.flipud(v2lvm)])
+  try:
+      v2hm = annotations['V2 HM']
+  except KeyError:
+      v2hm = np.zeros((0, 2))   # older annotations without the link: old behaviour
+  v2v_poly = np.vstack([v2uvm, v2pev, np.flipud(v1uvm), v2hm])
+  v2d_poly = np.vstack([v1lvm, np.flipud(v2ped), np.flipud(v2lvm), np.flipud(v2hm)])
 
-  # V3v / V3d (same pattern as V2):
+  # V3v / V3d (closed along the V3 HM link V2-fovea -> V3-fovea):
   v3uvm = annotations['V3 UVM (ventral)']
   v3lvm = annotations['V3 LVM (dorsal)']
   v3pev = annotations['V3 Ventral Periphery']
   v3ped = annotations['V3 Dorsal Periphery']
-  v3v_poly = np.vstack([v3uvm, v3pev, np.flipud(v2uvm)])
-  v3d_poly = np.vstack([v2lvm, np.flipud(v3ped), np.flipud(v3lvm)])
+  try:
+      v3hm = annotations['V3 HM']
+  except KeyError:
+      v3hm = np.zeros((0, 2))
+  v3v_poly = np.vstack([v3uvm, v3pev, np.flipud(v2uvm), v3hm])
+  v3d_poly = np.vstack([v2lvm, np.flipud(v3ped), np.flipud(v3lvm), np.flipud(v3hm)])
 
   # Turn each of the six polygons into a path/label:
   fmap = target['flatmap']
@@ -459,9 +479,7 @@ review: |
       inside = path.label > 0.5
       if np.sum(inside) > np.sum(~inside):
           inside = ~inside
-      labels[inside] = i
-
-  save_hooks['v1v-v1d-v2v-v2d-v3v-v3d-hV4-VO1-V3a-IPS0-IPS1-labels.mgz'] = lambda filename: ny.save(filename, labels)
+      labels[inside & (labels == 0)] = i
   
   # hV4 (label 7) — free closed contour; V1-V3 take priority over overlap
   try:
@@ -528,6 +546,11 @@ review: |
   except KeyError:
       pass  # IPS1 not drawn yet for this subject/hemisphere — skip
 
+  # ---- Version 1: everything drawn, fovea INCLUDED ----
+  labels_withfovea = labels.copy()
+
+  # ---- Version 2: same, but with the Exclusion Fovea contour zeroed ----
+  labels_nofovea = labels.copy()
   try:
       excl_poly = annotations['Exclusion Fovea']
       if excl_poly is not None and len(excl_poly) >= 3:
@@ -536,18 +559,48 @@ review: |
           excl_inside = excl_path.label > 0.5
           if np.sum(excl_inside) > np.sum(~excl_inside):
               excl_inside = ~excl_inside
-          labels[excl_inside] = 0
+          labels_nofovea[excl_inside] = 0
   except KeyError:
-      pass  # contour not drawn yet for this subject/hemisphere — skip harmlessly
+      pass  # contour not drawn yet for this subject/hemisphere
 
-  fmap_labels = labels[fmap.labels]
-  ny.cortex_plot(
-      fmap,
-      color=fmap_labels,
-      cmap='rainbow',
-      mask=(fmap_labels > 0),
-      axes=axes,
-      alpha=0.5)
-  axes.axis('equal')
+  sid = target['Subject ID']                 # e.g. 'sub-03'
+  hemi = target['Hemisphere']                # 'LH' or 'RH'
+  roi_tag = 'v1v-v1d-v2v-v2d-v3v-v3d-hV4-VO1-V3a-IPS0-IPS1'
+
+  save_hooks[f'{sid}_hemi-{hemi}_{roi_tag}_withfovea.mgz'] = \
+      lambda filename: ny.save(filename, labels_withfovea)
+  save_hooks[f'{sid}_hemi-{hemi}_{roi_tag}_nofovea.mgz'] = \
+      lambda filename: ny.save(filename, labels_nofovea)
+
+  from matplotlib.colors import ListedColormap
+  label_cmap = ListedColormap([
+      '#e6194b',  # 1  V1v
+      '#f58231',  # 2  V1d
+      '#ffe119',  # 3  V2v
+      '#3cb44b',  # 4  V2d
+      '#42d4f4',  # 5  V3v
+      '#4363d8',  # 6  V3d
+      '#911eb4',  # 7  hV4
+      '#f032e6',  # 8  VO1
+      '#9a6324',  # 9  V3a
+      '#800000',  # 10 IPS0
+      '#000075']) # 11 IPS1
+
   axes.axis('off')
+  ax_left  = axes.inset_axes([0.00, 0.0, 0.49, 1.0])
+  ax_right = axes.inset_axes([0.51, 0.0, 0.49, 1.0])
+  for ax, lab, title in ((ax_left,  labels_withfovea, 'with fovea'),
+                         (ax_right, labels_nofovea,   'fovea excluded')):
+      fl = lab[fmap.labels]
+      ny.cortex_plot(
+          fmap,
+          color=fl,
+          cmap=label_cmap,
+          vmin=1, vmax=11,
+          mask=(fl > 0),
+          axes=ax,
+          alpha=0.5)
+      ax.axis('equal')
+      ax.axis('off')
+      ax.set_title(title, fontsize=8)
 
