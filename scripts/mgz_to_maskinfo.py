@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
-"""Convert cortex-annotate label .mgz files into one maskinfo JSON per ROI.
+"""Convert cortex-annotate label .mgz files into one maskinfo JSON per ROI (for each sub-hemi).
  
 usage: python mgz_to_maskinfo.py PREP_DIR MGZ [MGZ ...]
   PREP_DIR = .../prfprepare/analysis-02_votcROI
   MGZ      = sub-XX_hemi-LH_<roi tag>_withfovea.mgz / _nofovea.mgz
 Output goes to  <folder of the mgz>/maskinfo/  (staging, no session in the name).
+
+Run:
+python3 scripts/mgz_to_maskinfo.py \
+  /bcbl/home/public/Gari/VOTCLOC/main_exp/BIDS/derivatives/prfprepare/analysis-02_votcROI \
+  save/EHUMiguelMartinez/sub-*/*/*.mgz
 """
 import glob, json, os, re, sys
 import numpy as np
-import nibabel as nib
+
+try:
+    import nibabel as nib
+except ModuleNotFoundError as exc:
+    raise SystemExit(
+        "ERROR: nibabel is not installed in the active Python environment.\n"
+        "Install it with one of:\n"
+        "  conda install -c conda-forge nibabel\n"
+        "  pip install nibabel\n"
+        "Then rerun the script."
+    ) from exc
  
 ROI = {1: 'V1v', 2: 'V1d', 3: 'V2v', 4: 'V2d', 5: 'V3v', 6: 'V3d',
        7: 'hV4', 8: 'VO1', 9: 'V3a', 10: 'IPS0', 11: 'IPS1'}
