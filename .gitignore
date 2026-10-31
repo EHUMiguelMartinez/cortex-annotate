@@ -139,3 +139,7 @@ dmypy.json
 
 # We also want to exclude user preference files.
 .annot-prefs.yaml
+
+# Per-session maskinfo staging output of scripts/mgz_to_maskinfo.py; copied to
+# prfprepare (see save/*/copy_manifest_*.tsv) and regenerable from the .mgz files.
+save/*/sub-*/[LR]H/maskinfo_sessions/
